@@ -5,7 +5,9 @@ import (
 	"log"
 	"net/url"
 	"os"
+	"slices"
 	"strconv"
+	"strings"
 	"sync"
 )
 
@@ -52,9 +54,31 @@ func main() {
 	cfg.wg.Wait()
 
 	log.Print("=== Crawl Complete ===")
-	log.Printf("Total number of links: %d", len(cfg.pages))
-	for k, v := range cfg.pages {
-		log.Printf("%s - %d", k, v)
-	}
+	printReport(cfg.pages, cfg.baseURL.String())
 
+}
+
+func printReport(pages map[string]int, baseURL string) {
+	fmt.Print("=============================\n")
+	fmt.Printf("  REPORT for %s\n", baseURL)
+	fmt.Print("=============================\n")
+	visits := []visit{}
+	for u, n := range pages {
+		visits = append(visits, visit{n, u})
+	}
+	slices.SortFunc(visits, func(a, b visit) int {
+		diff := b.numberOfVisits - a.numberOfVisits
+		if diff != 0 {
+			return diff
+		}
+		return strings.Compare(a.URL, b.URL)
+	})
+	for _, v := range visits {
+		fmt.Printf("Found %d internal links to %s\n", v.numberOfVisits, v.URL)
+	}
+}
+
+type visit struct {
+	numberOfVisits int
+	URL            string
 }
