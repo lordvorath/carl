@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"log"
 	"os"
 )
 
@@ -9,14 +10,22 @@ func main() {
 	args := os.Args[1:]
 	if len(args) < 1 {
 		fmt.Print("no website provided\n")
-		os.Exit(1)
+		return
 	}
 	if len(args) > 1 {
 		fmt.Print("too many arguments provided\n")
-		os.Exit(1)
+		return
 	}
 	baseURL := args[0]
-	fmt.Printf("starting crawl of: %s\n", baseURL)
-	fmt.Print(getHTML(baseURL))
+	fmt.Printf("=== Starting crawl of: %s ===\n", baseURL)
+
+	pages := make(map[string]int)
+	crawlPage(baseURL, baseURL, pages)
+
+	log.Print("=== Crawl Complete ===")
+	log.Printf("Total number of links: %d", len(pages))
+	for k, v := range pages {
+		log.Printf("%s - %d", k, v)
+	}
 
 }
