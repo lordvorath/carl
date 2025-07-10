@@ -3,22 +3,41 @@ package main
 import (
 	"log"
 	"net/url"
+	"sync"
 )
 
-func crawlPage(rawBaseURL, rawCurrentURL string, pages map[string]int) {
+type config struct {
+	pages              map[string]int
+	maxPages           int
+	baseURL            *url.URL
+	mu                 *sync.Mutex
+	concurrencyControl chan struct{}
+	wg                 *sync.WaitGroup
+}
+
+func (cfg *config) crawlPage(rawCurrentURL string) {
+
+	cfg.concurrencyControl <- struct{}{}
+	defer func() {
+		<-cfg.concurrencyControl
+		cfg.wg.Done()
+	}()
+
+	cfg.mu.Lock()
+	if len(cfg.pages) >= cfg.maxPages {
+		cfg.mu.Unlock()
+		return
+	}
+	cfg.mu.Unlock()
+
 	currentURL, err := url.Parse(rawCurrentURL)
 	if err != nil {
 		log.Printf("Error - crawlPage: couldn't parse URL '%s': %v\n", rawCurrentURL, err)
 		return
 	}
-	baseURL, err := url.Parse(rawBaseURL)
-	if err != nil {
-		log.Printf("Error - crawlPage: couldn't parse URL '%s': %v\n", rawBaseURL, err)
-		return
-	}
 
 	// skip other websites
-	if currentURL.Hostname() != baseURL.Hostname() {
+	if currentURL.Hostname() != cfg.baseURL.Hostname() {
 		return
 	}
 
@@ -28,26 +47,39 @@ func crawlPage(rawBaseURL, rawCurrentURL string, pages map[string]int) {
 		return
 	}
 
-	if _, ok := pages[normURL]; ok {
-		pages[normURL]++
+	if isFirst := cfg.addPageVisit(normURL); !isFirst {
 		return
 	}
 
-	pages[normURL] = 1
 	log.Printf("crawling -> %s", normURL)
-	bod, err := getHTML(rawCurrentURL)
+	bod, err := getHTML(currentURL.String())
 	if err != nil {
 		log.Printf("failed to get HTML: %v", err)
 		return
 	}
 
-	urls, err := getURLsFromHTML(bod, rawBaseURL)
+	urls, err := getURLsFromHTML(bod, currentURL.String())
 	if err != nil {
 		log.Printf("failed to get links: %v", err)
 		return
 	}
 
 	for _, u := range urls {
-		crawlPage(rawBaseURL, u, pages)
+		cfg.wg.Add(1)
+		go cfg.crawlPage(u)
 	}
+
+}
+
+func (cfg *config) addPageVisit(normURL string) bool {
+	cfg.mu.Lock()
+	defer cfg.mu.Unlock()
+
+	if _, ok := cfg.pages[normURL]; ok {
+		cfg.pages[normURL]++
+		return false
+	}
+
+	cfg.pages[normURL] = 1
+	return true
 }
